@@ -1,0 +1,20 @@
+<Project>
+
+  <PropertyGroup>
+    <Version>0.1.0</Version>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!--
+      COM interop must stay intact. Trimming and NativeAOT both strip or disable the
+      built-in COM interop layer that OneNoteMcp depends on, so they are explicitly off.
+    -->
+    <PublishTrimmed>false</PublishTrimmed>
+    <PublishAot>false</PublishAot>
+    <IsAotCompatible>false</IsAotCompatible>
+  </PropertyGroup>
+
+</Project>
