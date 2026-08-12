@@ -15,7 +15,7 @@ public interface IOneNoteService
 
     Task<string> GetPageContentByLinkAsync(string link, CancellationToken cancellationToken = default);
 
-    Task<CreatePageResult> CreatePageAsync(string sectionId, string title, string contentMarkdown, CancellationToken cancellationToken = default);
+    Task<CreatePageResult> CreatePageAsync(string sectionId, string title, string contentMarkdown, string? parentPageId = null, CancellationToken cancellationToken = default);
 
     Task<BlockResult> AppendBlockAsync(string pageId, string contentMarkdown, CancellationToken cancellationToken = default);
 

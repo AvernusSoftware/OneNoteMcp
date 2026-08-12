@@ -15,4 +15,8 @@ public sealed class CreatePageResult
 
     [JsonPropertyName("status")]
     public string Status { get; init; }
+
+    [JsonPropertyName("page_level")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? PageLevel { get; init; }
 }

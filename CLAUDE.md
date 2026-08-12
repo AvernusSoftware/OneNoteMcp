@@ -126,6 +126,44 @@ Run formatting inside `one:T` comes back as `<span style='font-weight:bold' lang
 unquoted attribute value. `InlineHtmlReader` normalises unquoted attributes, void tags and
 `&nbsp;` before parsing, and falls back to tag-stripping if all else fails.
 
+### Subpages are a position, not a relationship
+
+OneNote's data model has no parent/child link between pages. A page's "subpage-ness" is the
+`pageLevel` attribute (0/1/2 - OneNote hard-caps at three visual levels) on that page's hierarchy-XML
+`one:Page` element, combined with its position: a page reads as a subpage of whichever earlier page
+in the same section has a lower `pageLevel`. There is nothing else to move or reparent - place a
+page after the right sibling at the right level and it *is* that level's subpage, structurally.
+
+### `UpdateHierarchy`'s stub was wrong to trust
+
+Every other never-called member in `IApplication` is a placeholder-safe no-op slot - but
+`UpdateHierarchy` sat at vtable slot 2 as a bare `void UpdateHierarchy()` until this feature needed to
+actually call it. Microsoft's docs give its real IDL as exactly two parameters - `bstrChangesXmlIn`
+and `xsSchema` - no `force`, no `dateExpectedLastModified`, no output parameter, unlike its
+page-content sibling `UpdatePageContent`. It is what lets a caller set `pageLevel` and page order
+directly, which is the only way this codebase creates a subpage: `CreateNewPage` always appends an
+unindented top-level page and has no positioning parameter at all.
+
+### Creating a subpage is two calls, not one
+
+`create_page` still creates the new page exactly as before - `CreateNewPage` + `UpdatePageContent` -
+so its title and content go through the one, proven path. Only once that succeeds, with a real page
+id and a title OneNote has already accepted, does a *second*, separate `UpdateHierarchy` call
+reposition it under `parentPageId`. Folding both into one `UpdateHierarchy` call would mean handing
+OneNote a nameless page and trusting it to sync the hierarchy `name` from content before anything
+could read it back - untested, and unnecessary, since the caller already knows the id and title from
+the first call.
+
+That second call sends the section's complete, explicit, ordered list of `one:Page` children, never a
+fragment - the docs warn that a partial hierarchy string leaves OneNote to guess at an ambiguous
+operation. Every pre-existing page in that list is a verbatim clone of what `GetHierarchy` just
+returned for it - same `ID`, `name`, `pageLevel`, anything else it carried. Only the new page's
+element is hand-built, with `pageLevel` set to its parent's own level + 1. The existing pages'
+*positions* in the list do shift when a subpage lands in the middle of a section - that is the same
+visible effect as dragging a page's tab in the OneNote UI, not a bug - but every attribute they
+already had travels through untouched, so a write that was never meant to touch them cannot perturb
+their own subpage grouping.
+
 ### Threading
 
 Every COM call runs on one dedicated STA thread (`StaThreadRunner`) — never a pool, because the

@@ -31,7 +31,7 @@ Azure portal, no client ID or API permissions to grant.
 | `get_page_content` | `pageId` | The page as Markdown, with YAML front matter (`id`, `title`, timestamps). Agent-written blocks are preceded by `<!-- ai-block: ID -->` |
 | `get_page_by_link` | `link` | The page as Markdown, resolved directly from a pasted `onenote:` URI or SharePoint `Doc.aspx` link - no hierarchy walk or search needed first |
 | `search_notes` | `query`, optional `maxResults` (default 20) | Matching pages with location and a text excerpt |
-| `create_page` | `sectionId`, `title`, `contentMarkdown` | The new `page_id` and a status |
+| `create_page` | `sectionId`, `title`, `contentMarkdown`, optional `parentPageId` | The new `page_id`, its `page_level` if nested, and a status |
 | `append_to_page` | `pageId`, `contentMarkdown` | The new `block_id` and a status. Never touches existing content |
 | `update_block` | `pageId`, `blockId`, `contentMarkdown` | Status. **Fails** unless the block is the agent's and untouched by you |
 | `delete_block` | `pageId`, `blockId` | Status. **Fails** unless the block is the agent's and untouched by you |
@@ -56,6 +56,11 @@ lives in the server, not in the tool descriptions the model is asked to respect.
 
 Adding content is unrestricted: `create_page` makes new pages and `append_to_page` adds a new block
 to an existing page without touching what is already there.
+
+`create_page` can also nest the new page under an existing one by passing `parentPageId`, making it
+a subpage (or a sub-subpage, if the parent is itself a subpage — OneNote allows at most two levels of
+nesting); omit it for an ordinary top-level page. This is the only lever over a page's position, set
+once at creation time — there is no tool to relevel or move a page afterwards.
 
 Two consequences worth knowing:
 

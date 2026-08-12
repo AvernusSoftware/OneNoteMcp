@@ -113,10 +113,12 @@ public sealed class OneNoteTools
         "Creates a NEW page in the given section from Markdown. Supports headings, bold/italic/" +
         "strikethrough, inline code, links, nested bullet and numbered lists, to-do checkboxes " +
         "(- [ ] / - [x]), code blocks and tables. Get section ids from get_hierarchy with scope " +
-        "'Sections'. This never modifies an existing page. Note that OneNote has no code-block " +
-        "element, so a fenced block becomes monospace lines in OneNote's Code style and the " +
-        "language tag is dropped; everything else round-trips.")]
-    public Task<CreatePageResult> CreatePageAsync([Description("Id of the section to create the page in.")] string sectionId, [Description("Title of the new page.")] string title, [Description("Page body as Markdown.")] string contentMarkdown, CancellationToken cancellationToken = default)
+        "'Sections'. This never modifies an existing page. Pass parentPageId to nest the new page as " +
+        "a subpage of an existing page in the same section (or a sub-subpage, if that page is itself " +
+        "a subpage - OneNote allows at most two levels of nesting); omit it for an ordinary top-level " +
+        "page. Note that OneNote has no code-block element, so a fenced block becomes monospace lines " +
+        "in OneNote's Code style and the language tag is dropped; everything else round-trips.")]
+    public Task<CreatePageResult> CreatePageAsync([Description("Id of the section to create the page in.")] string sectionId, [Description("Title of the new page.")] string title, [Description("Page body as Markdown.")] string contentMarkdown, [Description("Optional id of an existing page in the same section to nest the new page under, making it a subpage. Omit for a top-level page.")] string? parentPageId = null, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(sectionId))
         {
@@ -125,7 +127,7 @@ public sealed class OneNoteTools
 
         return ExecuteAsync(
             nameof(CreatePageAsync),
-            () => _oneNote.CreatePageAsync(sectionId, title ?? string.Empty, contentMarkdown ?? string.Empty, cancellationToken));
+            () => _oneNote.CreatePageAsync(sectionId, title ?? string.Empty, contentMarkdown ?? string.Empty, string.IsNullOrWhiteSpace(parentPageId) ? null : parentPageId, cancellationToken));
     }
 
     [McpServerTool(Name = "append_to_page")]

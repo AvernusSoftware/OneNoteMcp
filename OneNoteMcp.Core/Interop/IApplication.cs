@@ -47,7 +47,8 @@ public interface IApplication
     // 1
     void GetHierarchy([MarshalAs(UnmanagedType.BStr)] string? bstrStartNodeId, HierarchyScope hsScope, [MarshalAs(UnmanagedType.BStr)] out string pbstrHierarchyXmlOut, XmlSchema xsSchema);
 
-    void UpdateHierarchy();      // 2
+    // 2
+    void UpdateHierarchy([MarshalAs(UnmanagedType.BStr)] string bstrChangesXmlIn, XmlSchema xsSchema);
 
     void OpenHierarchy();        // 3
 

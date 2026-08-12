@@ -59,3 +59,6 @@ nunit-*.xml
 
 # Local MCP client config (machine-specific paths)
 .mcp.json
+
+# Release build output
+publish/

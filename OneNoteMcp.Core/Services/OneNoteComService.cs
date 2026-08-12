@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Options;
 using OneNoteMcp.Core.Configuration;
 using OneNoteMcp.Core.Exceptions;
+using OneNoteMcp.Core.Hierarchy;
 using OneNoteMcp.Core.Interop;
 using OneNoteMcp.Core.Links;
 using OneNoteMcp.Core.Markdown;
@@ -337,7 +338,7 @@ public sealed class OneNoteComService : IOneNoteService, IDisposable
         }
     }
 
-    public Task<CreatePageResult> CreatePageAsync(string sectionId, string title, string contentMarkdown, CancellationToken cancellationToken = default)
+    public Task<CreatePageResult> CreatePageAsync(string sectionId, string title, string contentMarkdown, string? parentPageId = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sectionId);
 
@@ -356,12 +357,23 @@ public sealed class OneNoteComService : IOneNoteService, IDisposable
                 // Writes only to the page created on the line above - never to pre-existing content.
                 Write(xml);
 
+                int? pageLevel = null;
+
+                if (!string.IsNullOrWhiteSpace(parentPageId))
+                {
+                    XElement section = ReadSection(sectionId);
+                    (XElement reordered, int childLevel) = SubpagePlacement.PlaceUnderParent(section, parentPageId, pageId, title ?? string.Empty);
+                    WriteHierarchy(reordered);
+                    pageLevel = childLevel;
+                }
+
                 return new CreatePageResult
                 {
                     PageId = pageId,
                     Title = title ?? string.Empty,
                     SectionId = sectionId,
                     Status = "created",
+                    PageLevel = pageLevel,
                 };
             },
             cancellationToken);
@@ -463,6 +475,22 @@ public sealed class OneNoteComService : IOneNoteService, IDisposable
         return XDocument.Parse(xml).Descendants(One + "Page").FirstOrDefault()
             ?? throw new OneNoteException($"OneNote returned no page for id '{pageId}'.");
     }
+
+    private XElement ReadSection(string sectionId)
+    {
+        string xml = _handle.Invoke(app =>
+        {
+            app.GetHierarchy(sectionId, HierarchyScope.Pages, out string? result, XmlSchema.Xs2013);
+            return result;
+        });
+
+        return XDocument.Parse(xml).Descendants(One + "Section").FirstOrDefault(s => (string?)s.Attribute("ID") == sectionId)
+            ?? throw new OneNoteException($"OneNote returned no section for id '{sectionId}'.");
+    }
+
+    private void WriteHierarchy(XElement changesXml) =>
+        Guarded(() => _handle.Invoke(app =>
+            app.UpdateHierarchy(new XDocument(new XDeclaration("1.0", null, null), changesXml).ToString(SaveOptions.DisableFormatting), XmlSchema.Xs2013)));
 
     private static HashSet<string> BlockIds(XElement page) =>
         page.Descendants(One + "Outline")
