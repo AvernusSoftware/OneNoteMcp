@@ -1,4 +1,4 @@
-﻿# OneNoteMcp
+# OneNoteMcp
 
 A Model Context Protocol (MCP) server that gives an AI client — Claude Code, Cursor, or anything
 else that speaks MCP over STDIO — access to your local **Microsoft OneNote** notebooks, converting
@@ -33,47 +33,9 @@ Azure portal, no client ID or API permissions to grant.
 | `search_notes` | `query`, optional `maxResults` (default 20) | Matching pages with location and a text excerpt |
 | `create_page` | `sectionId`, `title`, `contentMarkdown`, optional `parentPageId` | The new `page_id`, its `page_level` if nested, and a status |
 | `append_to_page` | `pageId`, `contentMarkdown` | The new `block_id` and a status. Never touches existing content |
-| `update_block` | `pageId`, `blockId`, `contentMarkdown` | Status. **Fails** unless the block is the agent's and untouched by you |
+| `update_block` | `pageId`, `blockId`, `contentMarkdown` | Status. **Fails** unless the block is the agent's and untouched by you, and on a block holding an attachment |
 | `delete_block` | `pageId`, `blockId` | Status. **Fails** unless the block is the agent's and untouched by you |
-
-Block ids come from the `<!-- ai-block: ID -->` markers in `get_page_content`. Content without a
-marker is yours, and the two editing tools will refuse it.
-
-`get_page_by_link` exists so pasting a link is a single tool call instead of a manual
-hierarchy walk: it matches the page by title (and, when that's ambiguous, by section) against the
-already-loaded notebooks, falls back to full-text search if the page isn't loaded, and otherwise
-explains what it tried and what to do next.
-
-## Safety model
-
-**The server can only change text it wrote itself.** Anything you typed is out of reach.
-
-Every block this server writes is stamped with a configurable author identity (`OneNoteMcp Agent`
-by default). `update_block` and `delete_block` take a block id, re-read the page from OneNote, and
-refuse unless that block carries the agent's author. The check runs on freshly read XML on every
-single write, so a model cannot reach your content by inventing or reusing an id — the restriction
-lives in the server, not in the tool descriptions the model is asked to respect.
-
-Adding content is unrestricted: `create_page` makes new pages and `append_to_page` adds a new block
-to an existing page without touching what is already there.
-
-`create_page` can also nest the new page under an existing one by passing `parentPageId`, making it
-a subpage (or a sub-subpage, if the parent is itself a subpage — OneNote allows at most two levels of
-nesting); omit it for an ordinary top-level page. This is the only lever over a page's position, set
-once at creation time — there is no tool to relevel or move a page afterwards.
-
-Two consequences worth knowing:
-
-- **If you type into a block the agent created, that block becomes off-limits.** OneNote records
-  the author per paragraph, so your paragraph is visible even though the surrounding block is still
-  attributed to the agent. The server treats any foreign paragraph as contamination and locks the
-  whole block. Ask the agent to add a new block instead.
-- **Author attribution in OneNote is a label, not an access control.** OneNote has never verified
-  it — it is simply the name from *File → Options → General → Personalize your copy of Microsoft
-  Office*, and it is unauthenticated for humans and for this server alike. It is what makes the
-  agent's contributions visible in OneNote's author highlighting; it is not a credential.
-
-There is no tool that deletes a page, and none that renames or moves anything.
+| `attach_file` | `filePath`, and either `pageId` or `sectionId` + `pageTitle`; optional `parentPageId`, `caption` | The `block_id` and a status, plus `page_status` (`created` \| `reused`) when the page was looked up by title |
 
 ## Requirements
 
@@ -110,8 +72,7 @@ Or by hand, in an MCP client config:
 
 ## Configuration
 
-`appsettings.json` sits next to the executable — an MCP client launches the server with an
-arbitrary working directory, so the content root is the only reliable place to read it from.
+All configuration is available from the `appsettings.json` file.
 
 ```json
 {
@@ -127,15 +88,25 @@ arbitrary working directory, so the content root is the only reliable place to r
 | `Agent:DisplayName` | `OneNoteMcp Agent` | Written to OneNote's `author` / `lastModifiedBy`. Shown in OneNote's author highlighting, and the value `update_block` and `delete_block` match against |
 | `Agent:Initials` | `AI_MCP` | Written to OneNote's `authorInitials` |
 
-Both can be overridden with environment variables (`Agent__DisplayName`, `Agent__Initials`).
-
-Pick a name you would never use yourself. The server refuses to start if either value is empty: an
-empty `DisplayName` would match blocks that carry no author, which is exactly the content that must
+The server refuses to start if either value is empty: an empty `DisplayName` would match blocks that
+carry no author, which is exactly the content that must
 stay protected. Changing `DisplayName` later orphans blocks written under the old name — they stay
 on the page and become read-only, which is the safe direction to fail.
 
-There are deliberately **no settings to enable or disable editing**. The restriction to
-agent-authored content is structural rather than a policy toggle, so there is nothing to turn off.
+## Safety model
+
+**The server can only change text it wrote itself.** Anything you typed is out of reach.
+
+Every block this server writes is stamped with a configurable author identity (`OneNoteMcp Agent`
+by default). `update_block` and `delete_block` take a block id, re-read the page from OneNote, and
+refuse unless that block carries the agent's author. The check runs on freshly read XML on every
+single write, so a model cannot reach your content by inventing or reusing an id — the restriction
+lives in the server, not in the tool descriptions the model is asked to respect.
+
+**If you type into a block the agent created, that block becomes off-limits.** OneNote records
+the author per paragraph, so your paragraph is visible even though the surrounding block is still
+attributed to the agent. The server treats any foreign paragraph as contamination and locks the
+whole block. Ask the agent to add a new block instead.
 
 ## Markdown support
 
@@ -156,9 +127,8 @@ Two lossy spots, both inherent to OneNote's data model:
 
 ## Style
 
-Everything this server writes follows one fixed layout. It is not configurable — a page assembled
-from several `append_to_page` calls has to look like one page, and a per-call knob would guarantee
-it does not.
+Style is not configurable — a page assembled from several `append_to_page` calls has to look like one page,
+and a per-call knob would guarantee it does not.
 
 | | |
 | --- | --- |
@@ -167,14 +137,6 @@ it does not.
 | Lists | bullets, numbers and to-dos all sit one level in and get a blank line after the top-level list; nesting can go arbitrarily deep without walking off the page |
 | Tables | pushed in one level, like a list, so the border does not sit left of the surrounding text; a blank line above and below |
 | Code | OneNote's Code style in Consolas 10, with a blank line above and below |
-
-See [CLAUDE.md](CLAUDE.md) for the reasoning behind these choices and other implementation notes.
-
-## Contributing
-
-Implementation details, quirks of the OneNote COM API, and internal conventions are documented in
-[CLAUDE.md](CLAUDE.md) rather than here, to keep this README focused on using the server. Read it
-before making changes.
 
 ## License
 

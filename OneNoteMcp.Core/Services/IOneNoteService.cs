@@ -22,4 +22,6 @@ public interface IOneNoteService
     Task<BlockResult> UpdateBlockAsync(string pageId, string blockId, string contentMarkdown, CancellationToken cancellationToken = default);
 
     Task<BlockResult> DeleteBlockAsync(string pageId, string blockId, CancellationToken cancellationToken = default);
+
+    Task<AttachmentResult> AttachFileAsync(string filePath, string? pageId, string? sectionId, string? pageTitle, string? parentPageId, string? caption, CancellationToken cancellationToken = default);
 }

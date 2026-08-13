@@ -47,7 +47,7 @@ public sealed class PageSchema
     {
         ArgumentNullException.ThrowIfNull(page);
 
-        HashSet<int> usedStyleIndices = new();
+        HashSet<int> usedStyleIndices = [];
         Dictionary<string, XElement> existingByName = new(StringComparer.OrdinalIgnoreCase);
 
         foreach (XElement def in page.Elements(One + "QuickStyleDef"))
@@ -85,7 +85,7 @@ public sealed class PageSchema
             defs[Key(free)] = QuickStyleDef(free, style);
         }
 
-        HashSet<int> usedTagIndices = new();
+        HashSet<int> usedTagIndices = [];
         XElement? existingToDo = null;
 
         foreach (XElement def in page.Elements(One + "TagDef"))

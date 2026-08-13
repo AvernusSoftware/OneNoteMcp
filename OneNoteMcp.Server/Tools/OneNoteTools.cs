@@ -90,12 +90,9 @@ public sealed class OneNoteTools
     [McpServerTool(Name = "get_page_by_link")]
     [Description(
         "Reads a OneNote page straight from a pasted link, in one call - use this instead of " +
-        "get_hierarchy/search_notes when the user gives you a link rather than asking you to find " +
-        "something. Accepts either a 'onenote:' URI (from OneNote's 'Copy Link to Page') or a " +
-        "SharePoint 'Doc.aspx' share link (the kind with a 'wd=target(...)' parameter) - paste the " +
-        "link exactly as given, surrounding text is fine. Returns the same Markdown as " +
-        "get_page_content, with an extra leading comment noting how the page was found. Falls back " +
-        "to full-text search if the page isn't in an already-loaded notebook.")]
+        "get_hierarchy or search_notes when the user gives you a link. Accepts a 'onenote:' URI or a " +
+        "SharePoint 'Doc.aspx' share link, pasted exactly as given; surrounding text is fine. " +
+        "Returns the same Markdown as get_page_content.")]
     public Task<string> GetPageByLinkAsync([Description("The OneNote or SharePoint page link, pasted as-is.")] string link, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(link))
@@ -110,14 +107,10 @@ public sealed class OneNoteTools
 
     [McpServerTool(Name = "create_page")]
     [Description(
-        "Creates a NEW page in the given section from Markdown. Supports headings, bold/italic/" +
-        "strikethrough, inline code, links, nested bullet and numbered lists, to-do checkboxes " +
-        "(- [ ] / - [x]), code blocks and tables. Get section ids from get_hierarchy with scope " +
-        "'Sections'. This never modifies an existing page. Pass parentPageId to nest the new page as " +
-        "a subpage of an existing page in the same section (or a sub-subpage, if that page is itself " +
-        "a subpage - OneNote allows at most two levels of nesting); omit it for an ordinary top-level " +
-        "page. Note that OneNote has no code-block element, so a fenced block becomes monospace lines " +
-        "in OneNote's Code style and the language tag is dropped; everything else round-trips.")]
+        "Creates a NEW page in the given section from Markdown, and never modifies an existing one. " +
+        "Get section ids from get_hierarchy with scope 'Sections'. Pass parentPageId to nest the new " +
+        "page under an existing page in the same section as a subpage; OneNote allows at most two " +
+        "levels of nesting. Omit it for a top-level page.")]
     public Task<CreatePageResult> CreatePageAsync([Description("Id of the section to create the page in.")] string sectionId, [Description("Title of the new page.")] string title, [Description("Page body as Markdown.")] string contentMarkdown, [Description("Optional id of an existing page in the same section to nest the new page under, making it a subpage. Omit for a top-level page.")] string? parentPageId = null, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(sectionId))
@@ -134,8 +127,8 @@ public sealed class OneNoteTools
     [Description(
         "Adds a new block of Markdown to the end of an existing page. Nothing already on the page " +
         "is touched, so this is the safe way to contribute to a page the user wrote. Returns the " +
-        "new block's id, which update_block and delete_block accept. Supports the same Markdown as " +
-        "create_page.")]
+        "new block's id, which update_block and delete_block accept. Headings, emphasis, links, " +
+        "nested lists, to-do checkboxes, tables and code blocks all work.")]
     public Task<BlockResult> AppendToPageAsync([Description("Id of the page to add the block to.")] string pageId, [Description("Block content as Markdown.")] string contentMarkdown, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(pageId))
@@ -151,9 +144,10 @@ public sealed class OneNoteTools
     [McpServerTool(Name = "update_block")]
     [Description(
         "Replaces the entire body of a block that THIS server wrote, identified by the id in its " +
-        "'<!-- ai-block: ID -->' marker from get_page_content. Fails if the block was written by " +
-        "the user, or if the user has typed into it since - in that case add a new block with " +
-        "append_to_page instead. Read the page first: block ids change as the page is edited.")]
+        "'<!-- ai-block: ID -->' marker from get_page_content. Fails if the block is the user's, or " +
+        "if they have typed into it since - add a new block with append_to_page instead. Also fails " +
+        "on a block holding an attachment; re-attach with attach_file to update one. Read the page " +
+        "first: block ids change as the page is edited.")]
     public Task<BlockResult> UpdateBlockAsync([Description("Id of the page holding the block.")] string pageId, [Description("Block id from an 'ai-block' marker in get_page_content.")] string blockId, [Description("Replacement content as Markdown.")] string contentMarkdown, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(pageId))
@@ -196,6 +190,54 @@ public sealed class OneNoteTools
         return ExecuteAsync(
             nameof(DeleteBlockAsync),
             () => _oneNote.DeleteBlockAsync(pageId, blockId, cancellationToken));
+    }
+
+    [McpServerTool(Name = "attach_file")]
+    [Description(
+        "Attaches a file from disk to a OneNote page. Give pageId to attach to a page you already " +
+        "know, or sectionId plus pageTitle to attach to a page found by title in that section - " +
+        "created if it does not exist yet, which is how you make a dedicated attachments page. Add " +
+        "parentPageId to nest a newly created page as a subpage. Attaching a file whose name is " +
+        "already attached by this server replaces it in place rather than adding a second copy. " +
+        "Remove an attachment with delete_block.")]
+    public Task<AttachmentResult> AttachFileAsync([Description("Absolute path of the file to attach.")] string filePath, [Description("Id of the page to attach to. Omit when using sectionId and pageTitle.")] string? pageId = null, [Description("Id of the section holding the page to find or create. Requires pageTitle.")] string? sectionId = null, [Description("Title of the page to find, or to give it if it has to be created.")] string? pageTitle = null, [Description("Optional id of a page in the same section to nest a newly created page under.")] string? parentPageId = null, [Description("Optional line of text placed under the attachment.")] string? caption = null, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(filePath))
+        {
+            throw new McpException("filePath is required.");
+        }
+
+        if (!Path.IsPathRooted(filePath))
+        {
+            throw new McpException($"filePath must be absolute; '{filePath}' is relative.");
+        }
+
+        if (!File.Exists(filePath))
+        {
+            throw new McpException($"No file exists at '{filePath}'.");
+        }
+
+        bool byPage = !string.IsNullOrWhiteSpace(pageId);
+        bool bySection = !string.IsNullOrWhiteSpace(sectionId) || !string.IsNullOrWhiteSpace(pageTitle);
+
+        if (byPage && bySection)
+        {
+            throw new McpException("Give either pageId, or sectionId and pageTitle - not both.");
+        }
+
+        if (!byPage && (string.IsNullOrWhiteSpace(sectionId) || string.IsNullOrWhiteSpace(pageTitle)))
+        {
+            throw new McpException("Give pageId, or both sectionId and pageTitle. Call get_hierarchy to find ids.");
+        }
+
+        if (byPage && !string.IsNullOrWhiteSpace(parentPageId))
+        {
+            throw new McpException("parentPageId only applies when a page is created, so it needs sectionId and pageTitle.");
+        }
+
+        return ExecuteAsync(
+            nameof(AttachFileAsync),
+            () => _oneNote.AttachFileAsync(filePath, string.IsNullOrWhiteSpace(pageId) ? null : pageId, string.IsNullOrWhiteSpace(sectionId) ? null : sectionId, string.IsNullOrWhiteSpace(pageTitle) ? null : pageTitle, string.IsNullOrWhiteSpace(parentPageId) ? null : parentPageId, string.IsNullOrWhiteSpace(caption) ? null : caption, cancellationToken));
     }
 
     private async Task<T> ExecuteAsync<T>(string operation, Func<Task<T>> body)

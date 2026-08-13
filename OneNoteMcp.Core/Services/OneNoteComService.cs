@@ -197,8 +197,7 @@ public sealed class OneNoteComService : IOneNoteService, IDisposable
                     return result;
                 });
 
-                HierarchyNode[] tree = XDocument.Parse(hierarchyXml).Root?.Elements().SelectMany(ReadNode).ToArray()
-                    ?? Array.Empty<HierarchyNode>();
+                HierarchyNode[] tree = XDocument.Parse(hierarchyXml).Root?.Elements().SelectMany(ReadNode).ToArray() ?? [];
 
                 OneNoteLinkResolver.ResolveResult resolved = OneNoteLinkResolver.Resolve(tree, parsed);
 
@@ -216,12 +215,7 @@ public sealed class OneNoteComService : IOneNoteService, IDisposable
                 {
                     // Not found in an already-loaded notebook - fall back to full-text search, the
                     // same last resort a person would reach for.
-                    SearchHit? searchHit = TryResolveViaSearch(parsed);
-                    if (searchHit is null)
-                    {
-                        throw new OneNoteException(BuildNotFoundMessage(parsed, resolved));
-                    }
-
+                    SearchHit? searchHit = TryResolveViaSearch(parsed) ?? throw new OneNoteException(BuildNotFoundMessage(parsed, resolved));
                     pageId = searchHit.PageId;
                     note = $"<!-- resolved via full-text search fallback: '{searchHit.Title}' -->\n\n";
                 }
@@ -290,9 +284,7 @@ public sealed class OneNoteComService : IOneNoteService, IDisposable
             sb.Append('.');
         }
 
-        sb.Append(
-            " If the notebook containing this page is not open in the OneNote desktop app, open " +
-            "it there first, then retry.");
+        sb.Append(" If the notebook containing this page is not open in the OneNote desktop app, open it there first, then retry.");
 
         return sb.ToString();
     }
@@ -420,7 +412,7 @@ public sealed class OneNoteComService : IOneNoteService, IDisposable
             () =>
             {
                 XElement page = ReadPage(pageId);
-                RequireOwnedBlock(page, blockId);
+                RequireNoAttachment(RequireOwnedBlock(page, blockId), blockId);
 
                 string xml = MarkdownToOneNoteXml.BuildOutlineXml(
                     pageId,
@@ -464,6 +456,96 @@ public sealed class OneNoteComService : IOneNoteService, IDisposable
             cancellationToken);
     }
 
+    public Task<AttachmentResult> AttachFileAsync(string filePath, string? pageId, string? sectionId, string? pageTitle, string? parentPageId, string? caption, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+
+        string preferredName = Path.GetFileName(filePath);
+        if (string.IsNullOrWhiteSpace(preferredName))
+        {
+            throw new OneNoteException($"'{filePath}' names a directory, not a file.");
+        }
+
+        return _sta.RunAsync(
+            () =>
+            {
+                (string targetPageId, string? pageStatus, int? pageLevel) = ResolveTargetPage(pageId, sectionId, pageTitle, parentPageId);
+
+                XElement page = ReadPage(targetPageId);
+                XElement? owned = AiBlocks.FindOwnedAttachment(page, preferredName, _agent.DisplayName);
+
+                if (owned is null && AiBlocks.HoldsFile(page, preferredName))
+                {
+                    throw new OneNoteException(
+                        $"A file named '{preferredName}' is already attached to this page in a block " +
+                        $"that was not written by '{_agent.DisplayName}', or that someone has since " +
+                        "typed into. Rename the file, or attach it to a different page.");
+                }
+
+                string? existingBlockId = (string?)owned?.Attribute("objectID");
+                HashSet<string> before = BlockIds(page);
+
+                Write(AttachmentXml.BuildOutlineXml(
+                    targetPageId,
+                    filePath,
+                    preferredName,
+                    caption,
+                    _agent,
+                    PageSchema.ForExistingPage(page),
+                    objectId: existingBlockId));
+
+                return new AttachmentResult
+                {
+                    PageId = targetPageId,
+                    PageStatus = pageStatus,
+                    PageLevel = pageLevel,
+                    BlockId = existingBlockId ?? BlockIds(ReadPage(targetPageId)).Except(before).FirstOrDefault(),
+                    FileName = preferredName,
+                    Status = existingBlockId is null ? "attached" : "replaced",
+                };
+            },
+            cancellationToken);
+    }
+
+    private (string PageId, string? PageStatus, int? PageLevel) ResolveTargetPage(string? pageId, string? sectionId, string? pageTitle, string? parentPageId)
+    {
+        if (!string.IsNullOrWhiteSpace(pageId))
+        {
+            return (pageId, null, null);
+        }
+
+        if (string.IsNullOrWhiteSpace(sectionId) || string.IsNullOrWhiteSpace(pageTitle))
+        {
+            throw new OneNoteException("Either pageId, or both sectionId and pageTitle, must be given.");
+        }
+
+        if (AttachmentsPageLookup.FindPage(ReadSection(sectionId), pageTitle, parentPageId) is { } existing)
+        {
+            string existingId = (string?)existing.Attribute("ID") ?? throw new OneNoteException($"OneNote returned a page named '{pageTitle}' with no id.");
+            int level = ParentPage.ReadLevel(existing);
+
+            return (existingId, "reused", level > 0 ? level : null);
+        }
+
+        string created = _handle.Invoke(app =>
+        {
+            app.CreateNewPage(sectionId, out string? newId, NewPageStyle.BlankPageWithTitle);
+            return newId;
+        });
+
+        Write(MarkdownToOneNoteXml.BuildPageXml(created, pageTitle, string.Empty, _agent));
+
+        if (string.IsNullOrWhiteSpace(parentPageId))
+        {
+            return (created, "created", null);
+        }
+
+        (XElement reordered, int childLevel) = SubpagePlacement.PlaceUnderParent(ReadSection(sectionId), parentPageId, created, pageTitle);
+        WriteHierarchy(reordered);
+
+        return (created, "created", childLevel);
+    }
+
     private XElement ReadPage(string pageId)
     {
         string xml = _handle.Invoke(app =>
@@ -500,7 +582,7 @@ public sealed class OneNoteComService : IOneNoteService, IDisposable
 
     // Ownership is re-read from OneNote on every write, so a caller cannot get at somebody else's
     // content by passing an id it was never given.
-    private void RequireOwnedBlock(XElement page, string blockId)
+    private XElement RequireOwnedBlock(XElement page, string blockId)
     {
         XElement block = AiBlocks.FindBlock(page, blockId)
             ?? throw new OneNoteException(
@@ -515,6 +597,25 @@ public sealed class OneNoteComService : IOneNoteService, IDisposable
                 "with an 'ai-block' comment in get_page_content may be changed. Add new content " +
                 "with append_to_page instead.");
         }
+
+        return block;
+    }
+
+    private static void RequireNoAttachment(XElement block, string blockId)
+    {
+        if (!AiBlocks.HoldsAnyFile(block))
+        {
+            return;
+        }
+
+        string names = string.Join(", ", AiBlocks.FileNames(block).Select(name => $"'{name}'"));
+        string held = names.Length > 0 ? $"an attached file ({names})" : "an attached file";
+
+        throw new OneNoteException(
+            $"Block '{blockId}' holds {held}, and replacing its content would remove the file " +
+            "from the notebook - the '[attachment: ...]' placeholder in the Markdown is a label, " +
+            "not the file itself. Call attach_file again with the same file name to update the " +
+            "attachment in place, or delete_block to remove the whole block.");
     }
 
     private void Write(string pageXml) =>

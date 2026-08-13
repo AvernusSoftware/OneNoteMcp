@@ -24,7 +24,6 @@ public class MarkdownToXmlTests
         Assert.That((string?)page.Attribute("ID"), Is.EqualTo(PageId));
     }
 
-    // one:Page children must appear as TagDef*, QuickStyleDef*, Title, body.
     [Test]
     public void Page_children_follow_the_schema_order()
     {
@@ -110,7 +109,6 @@ public class MarkdownToXmlTests
         Assert.That(bullets, Has.Count.EqualTo(2));
     }
 
-    // OneNote answers hrInvalidXML if one:Bullet carries a 'font' attribute.
     [Test]
     public void Bullet_does_not_carry_a_font_attribute()
     {
@@ -118,7 +116,6 @@ public class MarkdownToXmlTests
         Assert.That(page.Descendants(One + "Bullet").Single().Attribute("font"), Is.Null);
     }
 
-    // OneNote requires numberFormat and rejects startAt / fontSize on one:Number.
     [Test]
     public void Number_carries_numberFormat_and_nothing_onenote_rejects()
     {
@@ -147,8 +144,6 @@ public class MarkdownToXmlTests
             node = node.Element(One + "OE")?.Element(One + "OEChildren");
         }
 
-        // Three list levels, plus the carrier paragraph the writer wraps a top-level list in to
-        // indent it - OneNote expresses indentation only by nesting, so the carrier is a real level.
         Assert.That(depth, Is.EqualTo(4), "three list levels plus the indent carrier");
     }
 
@@ -217,7 +212,6 @@ public class MarkdownToXmlTests
         });
     }
 
-    // Inside one:OE the schema order is List, Tag, content, OEChildren.
     [Test]
     public void List_element_precedes_the_text_run()
     {

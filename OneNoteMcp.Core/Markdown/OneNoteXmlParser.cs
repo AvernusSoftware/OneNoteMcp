@@ -241,6 +241,11 @@ public static class OneNoteXmlParser
             sb.Append(indent).Append(RenderImage(image)).Append("\n\n");
         }
 
+        foreach (XElement file in oe.Elements(One + "InsertedFile"))
+        {
+            sb.Append(indent).Append(RenderAttachment(file)).Append("\n\n");
+        }
+
         if (oe.Element(One + "InkDrawing") is not null)
         {
             sb.Append(indent).Append("<!-- ink drawing -->\n\n");
@@ -316,6 +321,7 @@ public static class OneNoteXmlParser
             || oe.Elements(One + "Tag").Any()
             || oe.Elements(One + "Table").Any()
             || oe.Elements(One + "Image").Any()
+            || oe.Elements(One + "InsertedFile").Any()
             || oe.Element(One + "InkDrawing") is not null)
         {
             return false;
@@ -390,6 +396,13 @@ public static class OneNoteXmlParser
                  ?? string.Empty;
 
         return $"![{alt.Replace("]", "\\]", StringComparison.Ordinal)}](onenote-object:{id})";
+    }
+
+    private static string RenderAttachment(XElement file)
+    {
+        string name = ((string?)file.Attribute("preferredName") is { Length: > 0 } preferred ? preferred : "file").Replace("]", "\\]", StringComparison.Ordinal);
+
+        return (string?)file.Attribute("objectID") is { Length: > 0 } id ? $"[attachment: {name}](onenote-object:{id})" : $"[attachment: {name}]";
     }
 
     private static string Shorten(string value, int max)
@@ -515,7 +528,7 @@ public static class OneNoteXmlParser
 
         public List<string> LabelsFor(XElement oe)
         {
-            List<string> labels = new();
+            List<string> labels = [];
 
             foreach (XElement tag in oe.Elements(One + "Tag"))
             {

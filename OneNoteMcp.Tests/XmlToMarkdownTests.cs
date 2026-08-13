@@ -14,8 +14,6 @@ public class XmlToMarkdownTests
 
     private static string StyleNameAfterRoundTrip(string body)
     {
-        // Strip the leading title heading Convert() renders - it is not part of the paragraph under
-        // test and would otherwise be mistaken for it below.
         string md = System.Text.RegularExpressions.Regex.Replace(Convert(body), @"\A# Test page\n+", string.Empty);
         XElement page = XElement.Parse(MarkdownToOneNoteXml.BuildPageXml("{ID}{1}{B0}", "T", md, PageXml.Agent));
 
@@ -51,7 +49,6 @@ public class XmlToMarkdownTests
         Assert.That(Convert(PageXml.Oe("just text")), Does.Contain("just text"));
     }
 
-    // Heading styles are resolved through QuickStyleDef, never by hard-coded index.
     [TestCase(1, "h1", "# ")]
     [TestCase(2, "h2", "## ")]
     [TestCase(3, "h3", "### ")]
@@ -65,7 +62,6 @@ public class XmlToMarkdownTests
     [Test]
     public void Heading_indexes_are_not_assumed_to_be_positional()
     {
-        // Same style name, deliberately unusual index.
         string page = $$"""
             <?xml version="1.0"?>
             <one:Page xmlns:one="{{PageXml.Ns}}" ID="{X}" name="T">
@@ -106,8 +102,6 @@ public class XmlToMarkdownTests
         Assert.That(md, Does.Contain("***x***").Or.Contain("**​*x*​**").Or.Contain("**" + "*x*" + "**"));
     }
 
-    // OneNote writes HTML, not XHTML: attribute values are often unquoted. Losing the parse here
-    // used to strip every inline style on the run.
     [Test]
     public void Unquoted_attribute_values_do_not_break_inline_parsing()
     {
@@ -205,7 +199,6 @@ public class XmlToMarkdownTests
         Assert.That(md, Does.Contain("| C# | 2000 |"));
     }
 
-    // Regression: TrimEnd(char[]) trims a character SET, so it used to turn "Year" into "Yea".
     [Test]
     public void Cell_text_ending_in_r_or_b_is_not_truncated()
     {
@@ -254,11 +247,42 @@ public class XmlToMarkdownTests
     }
 
     [Test]
+    public void Attachments_become_placeholders_carrying_their_file_name()
+    {
+        string body = """<one:OE><one:InsertedFile pathCache="x" preferredName="report.pdf" objectID="{F-1}"/></one:OE>""";
+
+        Assert.That(Convert(body), Does.Contain("[attachment: report.pdf](onenote-object:{F-1})"));
+    }
+
+    [Test]
+    public void An_attachment_without_an_id_renders_without_an_empty_link()
+    {
+        string md = Convert("""<one:OE><one:InsertedFile preferredName="report.pdf"/></one:OE>""");
+
+        Assert.That(md, Does.Contain("[attachment: report.pdf]"));
+        Assert.That(md, Does.Not.Contain("onenote-object:)"));
+    }
+
+    [Test]
+    public void An_attachment_alone_in_a_paragraph_is_not_mistaken_for_an_indent_carrier()
+    {
+        string body = """
+            <one:OE><one:InsertedFile preferredName="report.pdf"/>
+              <one:OEChildren><one:OE><one:T><![CDATA[below]]></one:T></one:OE></one:OEChildren>
+            </one:OE>
+            """;
+
+        string md = Convert(body);
+
+        Assert.That(md, Does.Contain("[attachment: report.pdf]"));
+        Assert.That(md, Does.Contain("below"));
+    }
+
+    [Test]
     public void A_list_is_separated_from_the_paragraph_that_follows_it()
     {
         string md = Convert(PageXml.Bullet("item") + PageXml.Oe("after"));
 
-        // Without the blank line the paragraph would be absorbed into the list item.
         Assert.That(md, Does.Contain("- item\n\nafter"));
     }
 

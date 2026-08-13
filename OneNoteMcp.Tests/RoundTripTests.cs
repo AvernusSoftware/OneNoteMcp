@@ -64,9 +64,7 @@ public class RoundTripTests
     [Test]
     public void Nested_bullet_list_keeps_its_indentation()
     {
-        Assert.That(
-            Body("- one\n  - two\n    - three"),
-            Is.EqualTo("- one\n  - two\n    - three"));
+        Assert.That(Body("- one\n  - two\n    - three"), Is.EqualTo("- one\n  - two\n    - three"));
     }
 
     [Test]
@@ -91,7 +89,6 @@ public class RoundTripTests
     [Test]
     public void Code_block_content_survives_even_though_the_fence_does_not()
     {
-        // OneNote has no code-block element, so a fence degrades to an indented block.
         string body = Body("```cs\nvar x = 1;\nvar y = 2;\n```");
 
         Assert.That(body, Does.Contain("var x = 1;"));

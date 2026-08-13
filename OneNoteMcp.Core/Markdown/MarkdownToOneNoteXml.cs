@@ -19,7 +19,7 @@ public static class MarkdownToOneNoteXml
 
     private static bool? FindTaskState(ListItemBlock item) => item.Descendants<TaskList>().FirstOrDefault()?.Checked;
 
-    private static XElement WrapAsOneT(string html) => new(One + "T", new XCData(html));
+    internal static XElement WrapAsOneT(string html) => new(One + "T", new XCData(html));
 
     private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
         .UsePipeTables()
@@ -109,12 +109,12 @@ public static class MarkdownToOneNoteXml
         return Serialise(page);
     }
 
-    private static XElement NewPageElement(string pageId) => new(
+    internal static XElement NewPageElement(string pageId) => new(
         One + "Page",
         new XAttribute(XNamespace.Xmlns + "one", One.NamespaceName),
         new XAttribute("ID", pageId));
 
-    private static string Serialise(XElement page) =>
+    internal static string Serialise(XElement page) =>
         new XDocument(new XDeclaration("1.0", null, null), page).ToString(SaveOptions.DisableFormatting);
 
     private static XElement BuildBody(string markdown, PageSchema schema)
@@ -367,7 +367,7 @@ public static class MarkdownToOneNoteXml
         return element;
     }
 
-    private static XElement Oe(XElement content, int? quickStyleIndex = null, string? style = null, string? spaceBefore = null)
+    internal static XElement Oe(XElement content, int? quickStyleIndex = null, string? style = null, string? spaceBefore = null)
     {
         XElement oe = new(One + "OE", new XAttribute("alignment", "left"));
 
@@ -497,7 +497,7 @@ public static class MarkdownToOneNoteXml
         }
     }
 
-    private static string HtmlEncode(string value) =>
+    internal static string HtmlEncode(string value) =>
         value.Replace("&", "&amp;", StringComparison.Ordinal)
              .Replace("<", "&lt;", StringComparison.Ordinal)
              .Replace(">", "&gt;", StringComparison.Ordinal);

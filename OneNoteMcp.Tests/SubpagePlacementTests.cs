@@ -40,7 +40,7 @@ public class SubpagePlacementTests
 
         List<XElement> pages = PagesOf(result);
         Assert.That(childLevel, Is.EqualTo(1));
-        Assert.That(pages.Select(p => (string?)p.Attribute("ID")), Is.EqualTo(new[] { "A", "New" }));
+        Assert.That(pages.Select(p => (string?)p.Attribute("ID")), Is.EqualTo(["A", "New"]));
         Assert.That((string?)pages[1].Attribute("pageLevel"), Is.EqualTo("1"));
     }
 
@@ -58,7 +58,7 @@ public class SubpagePlacementTests
 
         List<string?> order = PagesOf(result).Select(p => (string?)p.Attribute("ID")).ToList();
         Assert.That(childLevel, Is.EqualTo(1));
-        Assert.That(order, Is.EqualTo(new[] { "A", "B", "C", "New", "D" }));
+        Assert.That(order, Is.EqualTo(["A", "B", "C", "New", "D"]));
     }
 
     [Test]
@@ -74,7 +74,7 @@ public class SubpagePlacementTests
 
         List<string?> order = PagesOf(result).Select(p => (string?)p.Attribute("ID")).ToList();
         Assert.That(childLevel, Is.EqualTo(2));
-        Assert.That(order, Is.EqualTo(new[] { "A", "B", "New", "C" }));
+        Assert.That(order, Is.EqualTo(["A", "B", "New", "C"]));
     }
 
     [Test]
@@ -110,14 +110,13 @@ public class SubpagePlacementTests
     [Test]
     public void New_page_is_excluded_from_the_input_before_being_reinserted()
     {
-        // Simulates the new page already showing up in a fresh GetHierarchy read.
         XElement section = Section("{sec}", Page("A", "A"), Page("New", "stale name"));
 
         (XElement result, int childLevel) = SubpagePlacement.PlaceUnderParent(section, "A", "New", "New");
 
         List<XElement> pages = PagesOf(result);
         Assert.That(pages.Count(p => (string?)p.Attribute("ID") == "New"), Is.EqualTo(1));
-        Assert.That(pages.Select(p => (string?)p.Attribute("ID")), Is.EqualTo(new[] { "A", "New" }));
+        Assert.That(pages.Select(p => (string?)p.Attribute("ID")), Is.EqualTo(["A", "New"]));
         Assert.That((string?)pages[1].Attribute("name"), Is.EqualTo("New"));
         Assert.That((string?)pages[1].Attribute("pageLevel"), Is.EqualTo(childLevel.ToString()));
     }

@@ -29,11 +29,10 @@ public class StaThreadRunnerTests
         Assert.That(workerId, Is.Not.EqualTo(callerId));
     }
 
-    // The OneNote RCW is apartment-affine: every call must land on the same thread.
     [Test]
     public async Task All_work_items_run_on_the_same_thread()
     {
-        List<int> ids = new();
+        List<int> ids = [];
         for (int i = 0; i < 25; i++)
         {
             ids.Add(await _runner.RunAsync(() => Environment.CurrentManagedThreadId));
@@ -66,7 +65,6 @@ public class StaThreadRunnerTests
         Assert.That(ex!.Message, Is.EqualTo("boom"));
     }
 
-    // A faulted item must not take the worker loop down with it.
     [Test]
     public async Task The_runner_keeps_working_after_a_faulted_item()
     {
@@ -85,8 +83,6 @@ public class StaThreadRunnerTests
         Assert.That(ran, Is.True);
     }
 
-    // Without RunContinuationsAsynchronously the awaiting continuation resumes on the STA thread
-    // and starves the queue.
     [Test]
     public async Task Continuations_do_not_resume_on_the_sta_thread()
     {
@@ -101,8 +97,6 @@ public class StaThreadRunnerTests
     {
         int result = await _runner.RunAsync(() =>
         {
-            // Queue more work while already on the STA thread, then leave; the outer await must
-            // still complete rather than blocking the loop.
             return 1;
         });
 
@@ -148,8 +142,8 @@ public class StaThreadRunnerTests
     [Test]
     public async Task Queued_work_completes_in_submission_order()
     {
-        List<int> order = new();
-        List<Task> tasks = new();
+        List<int> order = [];
+        List<Task> tasks = [];
 
         for (int i = 0; i < 20; i++)
         {

@@ -1,4 +1,5 @@
 using OneNoteMcp.Core.Markdown;
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
 namespace OneNoteMcp.Tests;
@@ -61,8 +62,6 @@ public class FormattingTests
         }
     }
 
-    // The gap cannot be expressed as the quick style's spaceBefore: OneNote multiplies that by 36
-    // when it takes the definition in, so 11 points would come back as 396 - most of a page.
     [Test]
     public void No_quick_style_carries_the_gap_itself()
     {
@@ -77,8 +76,6 @@ public class FormattingTests
         }
     }
 
-    // The gap has to be paragraph spacing rather than an empty paragraph: a real one would come
-    // back on every read, multiply on every rewrite, and let a click contaminate the block.
     [Test]
     public void The_gap_above_a_heading_is_not_an_empty_paragraph()
     {
@@ -89,7 +86,7 @@ public class FormattingTests
             .Elements(One + "OE")
             .Select(oe => string.Concat(oe.Elements(One + "T").Select(t => t.Value)))];
 
-        Assert.That(texts, Is.EqualTo(new[] { "Intro text.", "Section", "Body." }));
+        Assert.That(texts, Is.EqualTo(["Intro text.", "Section", "Body."]));
     }
 
     [Test]
@@ -145,8 +142,6 @@ public class FormattingTests
         Assert.That(body.Elements(One + "OE").First().Element(One + "OEChildren"), Is.Not.Null);
     }
 
-    // Every kind of top-level list gets a trailing gap so the list reads as visually separate from
-    // whatever follows it.
     [TestCase("- one\n- two")]
     [TestCase("1. one\n2. two")]
     [TestCase("- [ ] open\n- [x] shut")]
@@ -160,8 +155,6 @@ public class FormattingTests
         Assert.That(string.Concat(top[1].Elements(One + "T").Select(t => t.Value)), Is.Empty);
     }
 
-    // The indent is applied once per block, not once per level - otherwise a list three deep would
-    // walk off the right edge of the page.
     [Test]
     public void A_nested_list_gains_no_second_carrier()
     {
@@ -177,8 +170,6 @@ public class FormattingTests
             "the nested bullet must be the direct child, with no carrier in between");
     }
 
-    // A gap after every nested sub-list would space out the middle of the parent list, so only the
-    // outermost list gets the trailing gap.
     [Test]
     public void A_nested_sub_list_gains_no_trailing_gap_of_its_own()
     {
@@ -188,9 +179,6 @@ public class FormattingTests
         Assert.That(items, Has.Count.EqualTo(2), "'one' and 'three', with no blank line spliced between them");
     }
 
-    // A cell is already a confined space, so nothing inside one is indented or padded. Pipe-table
-    // cells hold inline content only, so there is no list to carry - the guarantee that matters is
-    // that no carrier or spacer paragraph is introduced.
     [Test]
     public void Table_cells_gain_no_carrier_or_spacer()
     {
@@ -205,8 +193,6 @@ public class FormattingTests
         }
     }
 
-    // OneNote draws a table's left border noticeably left of the surrounding text, so a top-level
-    // table is pushed in one level - the same carrier a top-level list uses - to line it up.
     [Test]
     public void A_top_level_table_sits_one_level_in()
     {
@@ -229,10 +215,7 @@ public class FormattingTests
 
         List<string> texts = [.. body.Select(oe => string.Concat(oe.Elements(One + "T").Select(t => t.Value)))];
 
-        // Just one blank paragraph on each side: the table's carrier itself supplies the leading
-        // one (its own empty text reads as a blank line above the indented table), so there is no
-        // separate leading blank paragraph in addition to it.
-        Assert.That(texts, Is.EqualTo(new[] { "Before.", string.Empty, string.Empty, "After." }));
+        Assert.That(texts, Is.EqualTo(["Before.", string.Empty, string.Empty, "After."]));
 
         int tableAt = body.FindIndex(oe => oe.Descendants(One + "Table").Any());
         Assert.Multiple(() =>
@@ -243,9 +226,6 @@ public class FormattingTests
         });
     }
 
-    // The bug this guards: a heading's own leading gap (spaceBefore) is unrelated to a table's
-    // leading gap, so a table directly after a heading must still get exactly one blank line above
-    // it, not two.
     [Test]
     public void A_table_directly_after_a_heading_gains_only_one_leading_blank_line()
     {
@@ -256,9 +236,7 @@ public class FormattingTests
 
         List<string> texts = [.. body.Select(oe => string.Concat(oe.Elements(One + "T").Select(t => t.Value)))];
 
-        // One blank before the table (the carrier's own empty text) and one after (the trailing
-        // gap) - not two before it.
-        Assert.That(texts, Is.EqualTo(new[] { "Heading", string.Empty, string.Empty }));
+        Assert.That(texts, Is.EqualTo(["Heading", string.Empty, string.Empty]));
     }
 
     [Test]
@@ -271,7 +249,7 @@ public class FormattingTests
 
         List<string> texts = [.. body.Select(oe => string.Concat(oe.Elements(One + "T").Select(t => t.Value)))];
 
-        Assert.That(texts, Is.EqualTo(new[] { string.Empty, string.Empty, "After." }));
+        Assert.That(texts, Is.EqualTo([string.Empty, string.Empty, "After."]));
     }
 
     [Test]
@@ -284,7 +262,7 @@ public class FormattingTests
             .Where(oe => (string?)oe.Attribute("quickStyleIndex") == codeIndex)
             .Select(oe => string.Concat(oe.Elements(One + "T").Select(t => t.Value)))];
 
-        Assert.That(lines, Is.EqualTo(new[] { "first", "second" }));
+        Assert.That(lines, Is.EqualTo(["first", "second"]));
     }
 
     [Test]
@@ -298,7 +276,7 @@ public class FormattingTests
 
         List<string> texts = [.. oes.Select(oe => string.Concat(oe.Elements(One + "T").Select(t => t.Value)))];
 
-        Assert.That(texts, Is.EqualTo(new[] { "Before.", string.Empty, "code", string.Empty, "After." }));
+        Assert.That(texts, Is.EqualTo(["Before.", string.Empty, "code", string.Empty, "After."]));
 
         int codeAt = oes.FindIndex(oe => (string?)oe.Attribute("quickStyleIndex") == codeIndex);
         Assert.Multiple(() =>
@@ -318,12 +296,9 @@ public class FormattingTests
 
         List<string> texts = [.. body.Elements(One + "OE").Select(oe => string.Concat(oe.Elements(One + "T").Select(t => t.Value)))];
 
-        Assert.That(texts, Is.EqualTo(new[] { "code", string.Empty, "After." }));
+        Assert.That(texts, Is.EqualTo(["code", string.Empty, "After."]));
     }
 
-    // Tables and code blocks each want a blank line on both sides of themselves. Where two such
-    // rules land on the same seam - one block's trailing gap and the next block's leading gap - they
-    // must collapse into a single blank line rather than stacking into two.
     [TestCase("| a |\n| --- |\n| 1 |\n\n| b |\n| --- |\n| 2 |", 1, "table then table")]
     [TestCase("| a |\n| --- |\n| 1 |\n\n```\ncode\n```", 1, "table then code")]
     [TestCase("```\ncode\n```\n\n| a |\n| --- |\n| 1 |", 1, "code then table")]
@@ -356,8 +331,6 @@ public class FormattingTests
         Assert.That(run, Does.Contain("dotnet build"));
     }
 
-    // The carrier and the code spacers are formatting, not content: reading the page back must
-    // produce the Markdown that went in, or every edit would drift a level deeper.
     [TestCase("- one\n- two")]
     [TestCase("- one\n  - two")]
     [TestCase("1. one\n2. two")]
@@ -379,8 +352,6 @@ public class FormattingTests
             MarkdownToOneNoteXml.BuildPageXml(PageId, "Doc", markdown, PageXml.Agent),
             includeFrontMatter: false);
 
-        return System.Text.RegularExpressions.Regex
-            .Replace(md, @"\A# Doc\n+", string.Empty)
-            .Trim();
+        return Regex.Replace(md, @"\A# Doc\n+", string.Empty).Trim();
     }
 }

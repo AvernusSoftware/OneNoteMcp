@@ -33,10 +33,10 @@ public class OneNoteLinkResolverTests
     [Test]
     public void Unique_exact_title_match_wins_with_no_ids_at_all()
     {
-        HierarchyNode[] tree = new[]
-        {
+        HierarchyNode[] tree =
+        [
             Notebook("IoT - założenia", Section("{SEC}", "5.3", Page("{PAGE-1}", "BL260652 Cron"))),
-        };
+        ];
 
         ParsedOneNoteLink link = new() { PageTitle = "BL260652 Cron" };
 
@@ -50,15 +50,15 @@ public class OneNoteLinkResolverTests
     [Test]
     public void Ambiguous_title_is_narrowed_by_section_file_name()
     {
-        HierarchyNode[] tree = new[]
-        {
+        HierarchyNode[] tree =
+        [
             Notebook(
                 "Notebook A",
                 Section("{SEC-A}", "5.3", Page("{PAGE-A}", "Cron config"))),
             Notebook(
                 "Notebook B",
                 Section("{SEC-B}", "5.4", Page("{PAGE-B}", "Cron config"))),
-        };
+        ];
 
         ParsedOneNoteLink link = new() { PageTitle = "Cron config", SectionFileName = "5.4" };
 
@@ -71,11 +71,11 @@ public class OneNoteLinkResolverTests
     [Test]
     public void Still_ambiguous_title_with_no_disambiguator_reports_near_misses_not_a_match()
     {
-        HierarchyNode[] tree = new[]
-        {
+        HierarchyNode[] tree =
+        [
             Notebook("Notebook A", Section("{SEC-A}", "5.3", Page("{PAGE-A}", "Cron config"))),
             Notebook("Notebook B", Section("{SEC-B}", "5.4", Page("{PAGE-B}", "Cron config"))),
-        };
+        ];
 
         ParsedOneNoteLink link = new() { PageTitle = "Cron config" };
 
@@ -90,12 +90,12 @@ public class OneNoteLinkResolverTests
     {
         Guid guid = Guid.Parse("FEDF2512-FA44-423D-A903-12CB845B0FFA");
 
-        HierarchyNode[] tree = new[]
-        {
+        HierarchyNode[] tree =
+        [
             Notebook(
                 "IoT - założenia",
                 Section("{SEC}{1}{B0}", "5.3", Page($"{{SEC}}{{1}}{{{guid:N}}}", "Renamed since the link was copied"))),
-        };
+        ];
 
         ParsedOneNoteLink link = new() { PageTitle = "Old title that no longer matches", PageId = guid };
 
@@ -108,15 +108,15 @@ public class OneNoteLinkResolverTests
     [Test]
     public void Finds_an_indented_sub_page()
     {
-        HierarchyNode[] tree = new[]
-        {
+        HierarchyNode[] tree =
+        [
             Notebook(
                 "IoT - założenia",
                 Section(
                     "{SEC}",
                     "5.3",
                     Page("{PARENT}", "Parent page", Page("{CHILD}", "BL260652 Cron")))),
-        };
+        ];
 
         ParsedOneNoteLink link = new() { PageTitle = "BL260652 Cron" };
 
@@ -130,10 +130,10 @@ public class OneNoteLinkResolverTests
     [Test]
     public void No_match_and_no_near_miss_for_an_unrelated_title()
     {
-        HierarchyNode[] tree = new[]
-        {
+        HierarchyNode[] tree =
+        [
             Notebook("IoT - założenia", Section("{SEC}", "5.3", Page("{PAGE-1}", "Something else entirely"))),
-        };
+        ];
 
         ParsedOneNoteLink link = new() { PageTitle = "Completely different topic" };
 

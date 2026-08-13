@@ -173,8 +173,6 @@ public class AiBlockTests
         });
     }
 
-    // OneNote ignores an author set on one:Outline and substitutes the local Office user, so the
-    // stamp has to sit on the paragraphs and be propagated up by OneNote itself.
     [Test]
     public void The_outline_element_is_not_stamped_directly()
     {
@@ -243,8 +241,6 @@ public class AiBlockTests
         Assert.That(schema.StyleIndex("p"), Is.Not.EqualTo(0), "index 0 already means something else here");
     }
 
-    // A reused definition still has to travel with the fragment - see the test below - so what
-    // matters is that it goes out as the page wrote it rather than as this converter would.
     [Test]
     public void Redefining_a_style_the_page_already_owns_is_avoided()
     {
@@ -260,10 +256,6 @@ public class AiBlockTests
         });
     }
 
-    // Replacing a block drops its paragraphs before the new ones are attached, and OneNote prunes
-    // any definition nothing references at that moment. A fragment that left a reused definition
-    // out because "the page already has it" would find the index gone by the time its paragraphs
-    // landed, and every one of them would fall back to index 0 - the block loses its headings.
     [Test]
     public void A_reused_style_definition_still_travels_with_the_block()
     {
@@ -275,7 +267,7 @@ public class AiBlockTests
 
         Assert.That(
             block.Elements(One + "QuickStyleDef").Select(d => (string?)d.Attribute("index")),
-            Is.EquivalentTo(new[] { "0", "1" }));
+            Is.EquivalentTo(["0", "1"]));
     }
 
     [Test]
@@ -286,7 +278,7 @@ public class AiBlockTests
 
         Assert.That(
             block.Elements(One + "TagDef").Select(d => (string?)d.Attribute("index")),
-            Is.EqualTo(new[] { "4" }));
+            Is.EqualTo(["4"]));
     }
 
     [Test]
@@ -316,5 +308,100 @@ public class AiBlockTests
             block.Elements(One + "QuickStyleDef").Count(),
             Is.LessThanOrEqualTo(1),
             "a one-paragraph block should not add the whole style table to the user's page");
+    }
+
+    private static string Attachment(string preferredName, string? author = null)
+    {
+        string authorAttribute = author is null ? string.Empty : $@" author=""{author}""";
+        return $@"<one:OE{authorAttribute}><one:InsertedFile pathSource=""D:\{preferredName}"" preferredName=""{preferredName}""/></one:OE>";
+    }
+
+    private static XElement PageHolding(params XElement[] outlines) =>
+        new(One + "Page", new XAttribute("ID", PageId), outlines.Cast<object>().ToArray());
+
+    [Test]
+    public void An_attached_file_is_found_in_the_agents_own_block()
+    {
+        XElement page = PageHolding(Outline("{B1}", Agent, Attachment("report.pdf")));
+
+        XElement? found = AiBlocks.FindOwnedAttachment(page, "report.pdf", Agent);
+
+        Assert.That((string?)found?.Attribute("objectID"), Is.EqualTo("{B1}"));
+    }
+
+    [Test]
+    public void An_attached_file_in_someone_elses_block_is_not_returned()
+    {
+        XElement page = PageHolding(Outline("{B1}", "Someone Else", Attachment("report.pdf", "Someone Else")));
+
+        Assert.That(AiBlocks.FindOwnedAttachment(page, "report.pdf", Agent), Is.Null);
+        Assert.That(AiBlocks.HoldsFile(page, "report.pdf"), Is.True, "the file is still on the page, just not ours");
+    }
+
+    [Test]
+    public void An_attachment_block_someone_has_typed_into_is_no_longer_owned()
+    {
+        XElement page = PageHolding(Outline("{B1}", Agent, Attachment("report.pdf"), Paragraph("my note", "Someone Else")));
+
+        Assert.That(AiBlocks.FindOwnedAttachment(page, "report.pdf", Agent), Is.Null);
+    }
+
+    [Test]
+    public void Attachment_names_match_ignoring_case()
+    {
+        XElement page = PageHolding(Outline("{B1}", Agent, Attachment("Report.PDF")));
+
+        Assert.That(AiBlocks.FindOwnedAttachment(page, "report.pdf", Agent), Is.Not.Null);
+    }
+
+    [Test]
+    public void A_different_file_name_is_not_a_match()
+    {
+        XElement page = PageHolding(Outline("{B1}", Agent, Attachment("report.pdf")));
+
+        Assert.That(AiBlocks.FindOwnedAttachment(page, "notes.pdf", Agent), Is.Null);
+        Assert.That(AiBlocks.HoldsFile(page, "notes.pdf"), Is.False);
+    }
+
+    [Test]
+    public void A_block_holding_a_file_is_recognised_whatever_the_file_is_called()
+    {
+        XElement withFile = Outline("{B1}", Agent, Attachment("report.pdf"));
+        XElement textOnly = Outline("{B2}", Agent, Paragraph("just text"));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(AiBlocks.HoldsAnyFile(withFile), Is.True);
+            Assert.That(AiBlocks.HoldsAnyFile(textOnly), Is.False);
+            Assert.That(AiBlocks.FileNames(withFile), Is.EqualTo(["report.pdf"]));
+            Assert.That(AiBlocks.FileNames(textOnly), Is.Empty);
+        });
+    }
+
+    [Test]
+    public void A_nameless_file_still_counts_as_a_file()
+    {
+        XElement block = XElement.Parse($@"<one:Outline xmlns:one=""{PageXml.Ns}"" objectID=""{{B1}}""><one:OEChildren><one:OE><one:InsertedFile pathSource=""D:\x""/></one:OE></one:OEChildren></one:Outline>");
+
+        Assert.That(AiBlocks.HoldsAnyFile(block), Is.True);
+        Assert.That(AiBlocks.FileNames(block), Is.Empty);
+    }
+
+    [Test]
+    public void Every_file_in_a_block_is_named()
+    {
+        XElement block = Outline("{B1}", Agent, Attachment("a.pdf"), Attachment("b.txt"));
+
+        Assert.That(AiBlocks.FileNames(block), Is.EqualTo(["a.pdf", "b.txt"]));
+    }
+
+    [Test]
+    public void An_attachment_paragraph_carries_the_agent_identity()
+    {
+        XElement block = XElement.Parse(AttachmentXml.BuildOutlineXml(PageId, @"D:\report.pdf", "report.pdf", null, PageXml.Agent, PageSchema.ForNewPage()));
+        XElement oe = block.Descendants(One + "OE").First();
+
+        Assert.That((string?)oe.Attribute("author"), Is.EqualTo(PageXml.Agent.DisplayName));
+        Assert.That((string?)oe.Attribute("authorInitials"), Is.EqualTo(PageXml.Agent.Initials));
     }
 }
