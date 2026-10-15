@@ -27,18 +27,36 @@ public sealed class OneNoteComService : IOneNoteService, IDisposable
     private readonly OneNoteApplicationHandle _handle;
     private readonly AgentOptions _agent;
 
-    public OneNoteComService(IStaThreadRunner sta, IComObjects comObjects, IOptions<AgentOptions> agent)
+    public OneNoteComService(IStaThreadRunner sta, IComObjects comObjects, TimeProvider time, IOptions<OneNoteOptions> oneNote, IOptions<AgentOptions> agent)
     {
+        ArgumentNullException.ThrowIfNull(oneNote);
         ArgumentNullException.ThrowIfNull(agent);
 
+        oneNote.Value.Validate();
+
         _sta = sta;
-        _handle = new OneNoteApplicationHandle(comObjects);
+        _handle = new OneNoteApplicationHandle(comObjects, sta, time, TimeSpan.FromSeconds(oneNote.Value.IdleReleaseSeconds));
         _agent = agent.Value;
         _agent.Validate();
     }
 
-    public Task<HierarchyNode[]> GetHierarchyAsync(HierarchyScope scope, string? startNodeId = null, CancellationToken cancellationToken = default) =>
+    private Task<T> RunOnStaAsync<T>(Func<T> work, CancellationToken cancellationToken) =>
         _sta.RunAsync(
+            () =>
+            {
+                try
+                {
+                    return work();
+                }
+                finally
+                {
+                    _handle.OperationCompleted();
+                }
+            },
+            cancellationToken);
+
+    public Task<HierarchyNode[]> GetHierarchyAsync(HierarchyScope scope, string? startNodeId = null, CancellationToken cancellationToken = default) =>
+        RunOnStaAsync(
             () =>
             {
                 string xml = _handle.Invoke(app =>
@@ -55,7 +73,7 @@ public sealed class OneNoteComService : IOneNoteService, IDisposable
             cancellationToken);
 
     public Task<CurrentPageInfo> GetCurrentPageAsync(CancellationToken cancellationToken = default) =>
-        _sta.RunAsync(
+        RunOnStaAsync(
             () =>
             {
                 // Preferred source: the live OneNote window.
@@ -118,7 +136,7 @@ public sealed class OneNoteComService : IOneNoteService, IDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(pageId);
 
-        return _sta.RunAsync(
+        return RunOnStaAsync(
             () =>
             {
                 string xml = _handle.Invoke(app =>
@@ -137,7 +155,7 @@ public sealed class OneNoteComService : IOneNoteService, IDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
         maxResults = Math.Clamp(maxResults, 1, 100);
 
-        return _sta.RunAsync(() => FindPagesCore(query, maxResults), cancellationToken);
+        return RunOnStaAsync(() => FindPagesCore(query, maxResults), cancellationToken);
     }
 
     // Split out of SearchAsync so GetPageContentByLinkAsync can call it directly while already
@@ -189,7 +207,7 @@ public sealed class OneNoteComService : IOneNoteService, IDisposable
                 "(from OneNote's 'Copy Link to Page') or a SharePoint 'Doc.aspx' share link " +
                 "carrying a 'wd=target(...)' parameter.");
 
-        return _sta.RunAsync(
+        return RunOnStaAsync(
             () =>
             {
                 string hierarchyXml = _handle.Invoke(app =>
@@ -335,7 +353,7 @@ public sealed class OneNoteComService : IOneNoteService, IDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sectionId);
 
-        return _sta.RunAsync(
+        return RunOnStaAsync(
             () =>
             {
                 string pageId = _handle.Invoke(app =>
@@ -376,7 +394,7 @@ public sealed class OneNoteComService : IOneNoteService, IDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(pageId);
 
-        return _sta.RunAsync(
+        return RunOnStaAsync(
             () =>
             {
                 XElement page = ReadPage(pageId);
@@ -409,7 +427,7 @@ public sealed class OneNoteComService : IOneNoteService, IDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(pageId);
         ArgumentException.ThrowIfNullOrWhiteSpace(blockId);
 
-        return _sta.RunAsync(
+        return RunOnStaAsync(
             () =>
             {
                 XElement page = ReadPage(pageId);
@@ -439,7 +457,7 @@ public sealed class OneNoteComService : IOneNoteService, IDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(pageId);
         ArgumentException.ThrowIfNullOrWhiteSpace(blockId);
 
-        return _sta.RunAsync(
+        return RunOnStaAsync(
             () =>
             {
                 RequireOwnedBlock(ReadPage(pageId), blockId);
@@ -467,7 +485,7 @@ public sealed class OneNoteComService : IOneNoteService, IDisposable
             throw new OneNoteException($"'{filePath}' names a directory, not a file.");
         }
 
-        return _sta.RunAsync(
+        return RunOnStaAsync(
             () =>
             {
                 (string targetPageId, string? pageStatus, int? pageLevel) = ResolveTargetPage(pageId, sectionId, pageTitle, parentPageId);

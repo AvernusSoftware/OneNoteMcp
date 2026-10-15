@@ -1,4 +1,5 @@
 using OneNoteMcp.Core.Exceptions;
+using OneNoteMcp.Core.Threading;
 using System.Runtime.InteropServices;
 
 namespace OneNoteMcp.Core.Interop;
@@ -20,11 +21,19 @@ public sealed class OneNoteApplicationHandle : IDisposable
     private const int RpcEDisconnected = unchecked((int)0x80010108);
 
     private readonly IComObjects _comObjects;
+    private readonly IStaThreadRunner _sta;
+    private readonly TimeProvider _time;
+    private readonly TimeSpan _idleRelease;
     private IApplication? _app;
+    private ITimer? _idleTimer;
+    private long _completedOperations;
 
-    public OneNoteApplicationHandle(IComObjects comObjects)
+    public OneNoteApplicationHandle(IComObjects comObjects, IStaThreadRunner sta, TimeProvider time, TimeSpan idleRelease)
     {
         _comObjects = comObjects;
+        _sta = sta;
+        _time = time;
+        _idleRelease = idleRelease;
     }
 
     /// <summary>Gets the application, activating OneNote on first use.</summary>
@@ -80,7 +89,7 @@ public sealed class OneNoteApplicationHandle : IDisposable
             catch (COMException ex) when (IsDisconnected(ex.HResult) && attempt == 1)
             {
                 last = ex;
-                Release();
+                ReleaseApplication();
             }
         }
 
@@ -99,7 +108,52 @@ public sealed class OneNoteApplicationHandle : IDisposable
         });
     }
 
-    private void Release()
+    public void OperationCompleted()
+    {
+        StopIdleTimer();
+
+        if (_app is null)
+        {
+            return;
+        }
+
+        if (_idleRelease == TimeSpan.Zero)
+        {
+            ReleaseApplication();
+            return;
+        }
+
+        long operation = ++_completedOperations;
+        _idleTimer = _time.CreateTimer(_ => QueueIdleRelease(operation), null, _idleRelease, Timeout.InfiniteTimeSpan);
+    }
+
+    private void QueueIdleRelease(long operation)
+    {
+        try
+        {
+            _sta.RunAsync(() => ReleaseIfIdle(operation));
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+    }
+
+    private void ReleaseIfIdle(long operation)
+    {
+        if (operation == _completedOperations)
+        {
+            StopIdleTimer();
+            ReleaseApplication();
+        }
+    }
+
+    private void StopIdleTimer()
+    {
+        _idleTimer?.Dispose();
+        _idleTimer = null;
+    }
+
+    private void ReleaseApplication()
     {
         if (_app is not null)
         {
@@ -109,5 +163,9 @@ public sealed class OneNoteApplicationHandle : IDisposable
         _app = null;
     }
 
-    public void Dispose() => Release();
+    public void Dispose()
+    {
+        StopIdleTimer();
+        ReleaseApplication();
+    }
 }
