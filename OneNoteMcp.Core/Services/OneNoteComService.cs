@@ -24,14 +24,15 @@ public sealed class OneNoteComService : IOneNoteService, IDisposable
     private const int HrPageLockedForEditing = unchecked((int)0x80042030);
 
     private readonly IStaThreadRunner _sta;
-    private readonly OneNoteApplicationHandle _handle = new();
+    private readonly OneNoteApplicationHandle _handle;
     private readonly AgentOptions _agent;
 
-    public OneNoteComService(IStaThreadRunner sta, IOptions<AgentOptions> agent)
+    public OneNoteComService(IStaThreadRunner sta, IComObjects comObjects, IOptions<AgentOptions> agent)
     {
         ArgumentNullException.ThrowIfNull(agent);
 
         _sta = sta;
+        _handle = new OneNoteApplicationHandle(comObjects);
         _agent = agent.Value;
         _agent.Validate();
     }

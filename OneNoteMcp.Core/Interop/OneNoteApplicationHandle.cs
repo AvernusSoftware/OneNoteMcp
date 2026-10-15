@@ -8,8 +8,6 @@ namespace OneNoteMcp.Core.Interop;
 /// </summary>
 public sealed class OneNoteApplicationHandle : IDisposable
 {
-    private const string ProgId = "OneNote.Application";
-
     // Classic Office automation HRESULTs that mean "busy, try again".
     private const int RpcECallRejected = unchecked((int)0x80010001);
 
@@ -21,39 +19,30 @@ public sealed class OneNoteApplicationHandle : IDisposable
 
     private const int RpcEDisconnected = unchecked((int)0x80010108);
 
-    private object? _raw;
+    private readonly IComObjects _comObjects;
     private IApplication? _app;
+
+    public OneNoteApplicationHandle(IComObjects comObjects)
+    {
+        _comObjects = comObjects;
+    }
 
     /// <summary>Gets the application, activating OneNote on first use.</summary>
     public IApplication Application => _app ??= Activate();
 
     private IApplication Activate()
     {
-        Type type = Type.GetTypeFromProgID(ProgId, throwOnError: false)
-            ?? throw new OneNoteUnavailableException(
-                "OneNote desktop is not installed (the 'OneNote.Application' COM class is not " +
-                "registered). This server requires the desktop OneNote that ships with Microsoft " +
-                "365 or Office; the OneNote app from the Microsoft Store has no COM API.");
-
         Exception? last = null;
         for (int attempt = 1; attempt <= 5; attempt++)
         {
             try
             {
-                _raw = Activator.CreateInstance(type)
-                    ?? throw new OneNoteUnavailableException("Activating OneNote returned null.");
-                return (IApplication)_raw;
+                return _comObjects.CreateApplication();
             }
             catch (COMException ex) when (IsTransient(ex.HResult))
             {
                 last = ex;
                 Thread.Sleep(TimeSpan.FromMilliseconds(500 * attempt));
-            }
-            catch (InvalidCastException ex)
-            {
-                throw new OneNoteUnavailableException(
-                    "The OneNote COM object does not expose the expected IApplication interface. " +
-                    "This usually means an unsupported OneNote version is installed.", ex);
             }
         }
 
@@ -112,19 +101,11 @@ public sealed class OneNoteApplicationHandle : IDisposable
 
     private void Release()
     {
-        if (_raw is not null)
+        if (_app is not null)
         {
-            try
-            {
-                Marshal.FinalReleaseComObject(_raw);
-            }
-            catch
-            {
-                // Nothing useful to do if the RCW is already gone.
-            }
+            _comObjects.Release(_app);
         }
 
-        _raw = null;
         _app = null;
     }
 

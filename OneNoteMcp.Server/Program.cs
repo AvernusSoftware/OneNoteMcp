@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using OneNoteMcp.Core.Configuration;
+using OneNoteMcp.Core.Interop;
 using OneNoteMcp.Core.Services;
 using OneNoteMcp.Core.Threading;
 using OneNoteMcp.Server.Tools;
@@ -23,6 +24,7 @@ builder.Logging.AddConsole(options => options.LogToStandardErrorThreshold = LogL
 builder.Logging.SetMinimumLevel(LogLevel.Information);
 
 builder.Services.AddSingleton<IStaThreadRunner, StaThreadRunner>();
+builder.Services.AddSingleton<IComObjects, ComObjects>();
 builder.Services.AddSingleton<IOneNoteService, OneNoteComService>();
 builder.Services.AddSingleton<OneNoteTools>();
 
