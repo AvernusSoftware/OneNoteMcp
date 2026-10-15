@@ -1,4 +1,5 @@
 using OneNoteMcp.Core.Exceptions;
+using OneNoteMcp.Core.Threading;
 using System.Runtime.InteropServices;
 
 namespace OneNoteMcp.Core.Interop;
@@ -8,8 +9,6 @@ namespace OneNoteMcp.Core.Interop;
 /// </summary>
 public sealed class OneNoteApplicationHandle : IDisposable
 {
-    private const string ProgId = "OneNote.Application";
-
     // Classic Office automation HRESULTs that mean "busy, try again".
     private const int RpcECallRejected = unchecked((int)0x80010001);
 
@@ -21,39 +20,38 @@ public sealed class OneNoteApplicationHandle : IDisposable
 
     private const int RpcEDisconnected = unchecked((int)0x80010108);
 
-    private object? _raw;
+    private readonly IComObjects _comObjects;
+    private readonly IStaThreadRunner _sta;
+    private readonly TimeProvider _time;
+    private readonly TimeSpan _idleRelease;
     private IApplication? _app;
+    private ITimer? _idleTimer;
+    private long _completedOperations;
+
+    public OneNoteApplicationHandle(IComObjects comObjects, IStaThreadRunner sta, TimeProvider time, TimeSpan idleRelease)
+    {
+        _comObjects = comObjects;
+        _sta = sta;
+        _time = time;
+        _idleRelease = idleRelease;
+    }
 
     /// <summary>Gets the application, activating OneNote on first use.</summary>
     public IApplication Application => _app ??= Activate();
 
     private IApplication Activate()
     {
-        Type type = Type.GetTypeFromProgID(ProgId, throwOnError: false)
-            ?? throw new OneNoteUnavailableException(
-                "OneNote desktop is not installed (the 'OneNote.Application' COM class is not " +
-                "registered). This server requires the desktop OneNote that ships with Microsoft " +
-                "365 or Office; the OneNote app from the Microsoft Store has no COM API.");
-
         Exception? last = null;
         for (int attempt = 1; attempt <= 5; attempt++)
         {
             try
             {
-                _raw = Activator.CreateInstance(type)
-                    ?? throw new OneNoteUnavailableException("Activating OneNote returned null.");
-                return (IApplication)_raw;
+                return _comObjects.CreateApplication();
             }
             catch (COMException ex) when (IsTransient(ex.HResult))
             {
                 last = ex;
                 Thread.Sleep(TimeSpan.FromMilliseconds(500 * attempt));
-            }
-            catch (InvalidCastException ex)
-            {
-                throw new OneNoteUnavailableException(
-                    "The OneNote COM object does not expose the expected IApplication interface. " +
-                    "This usually means an unsupported OneNote version is installed.", ex);
             }
         }
 
@@ -91,7 +89,7 @@ public sealed class OneNoteApplicationHandle : IDisposable
             catch (COMException ex) when (IsDisconnected(ex.HResult) && attempt == 1)
             {
                 last = ex;
-                Release();
+                ReleaseApplication();
             }
         }
 
@@ -110,23 +108,66 @@ public sealed class OneNoteApplicationHandle : IDisposable
         });
     }
 
-    private void Release()
+    public void Release(object comObject) => _comObjects.Release(comObject);
+
+    public void OperationCompleted()
     {
-        if (_raw is not null)
+        StopIdleTimer();
+
+        if (_app is null)
         {
-            try
-            {
-                Marshal.FinalReleaseComObject(_raw);
-            }
-            catch
-            {
-                // Nothing useful to do if the RCW is already gone.
-            }
+            return;
         }
 
-        _raw = null;
+        if (_idleRelease == TimeSpan.Zero)
+        {
+            ReleaseApplication();
+            return;
+        }
+
+        long operation = ++_completedOperations;
+        _idleTimer = _time.CreateTimer(_ => QueueIdleRelease(operation), null, _idleRelease, Timeout.InfiniteTimeSpan);
+    }
+
+    private void QueueIdleRelease(long operation)
+    {
+        try
+        {
+            _sta.RunAsync(() => ReleaseIfIdle(operation));
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+    }
+
+    private void ReleaseIfIdle(long operation)
+    {
+        if (operation == _completedOperations)
+        {
+            StopIdleTimer();
+            ReleaseApplication();
+        }
+    }
+
+    private void StopIdleTimer()
+    {
+        _idleTimer?.Dispose();
+        _idleTimer = null;
+    }
+
+    private void ReleaseApplication()
+    {
+        if (_app is not null)
+        {
+            _comObjects.Release(_app);
+        }
+
         _app = null;
     }
 
-    public void Dispose() => Release();
+    public void Dispose()
+    {
+        StopIdleTimer();
+        ReleaseApplication();
+    }
 }

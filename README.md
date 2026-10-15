@@ -79,6 +79,9 @@ All configuration is available from the `appsettings.json` file.
   "Agent": {
     "DisplayName": "OneNoteMcp Agent",
     "Initials": "AI_MCP"
+  },
+  "OneNote": {
+    "IdleReleaseSeconds": 10
   }
 }
 ```
@@ -87,11 +90,14 @@ All configuration is available from the `appsettings.json` file.
 | --- | --- | --- |
 | `Agent:DisplayName` | `OneNoteMcp Agent` | Written to OneNote's `author` / `lastModifiedBy`. Shown in OneNote's author highlighting, and the value `update_block` and `delete_block` match against |
 | `Agent:Initials` | `AI_MCP` | Written to OneNote's `authorInitials` |
+| `OneNote:IdleReleaseSeconds` | `10` | How long the server keeps its connection to OneNote after the last tool call. `0` releases it right after each call |
 
 The server refuses to start if either value is empty: an empty `DisplayName` would match blocks that
 carry no author, which is exactly the content that must
 stay protected. Changing `DisplayName` later orphans blocks written under the old name — they stay
 on the page and become read-only, which is the safe direction to fail.
+
+While the server holds its connection, closing the OneNote window does not end the `ONENOTE.EXE` process, and OneNote may then fail to start again. The server therefore connects only for the duration of a tool call and lets go once `IdleReleaseSeconds` pass without another call, after which a closed OneNote exits normally. A tool call made while OneNote is closed still starts it in the background, as before.
 
 ## Safety model
 
