@@ -121,8 +121,24 @@ public sealed class OneNoteComService : IOneNoteService, IDisposable
         {
             return _handle.Invoke(app =>
             {
-                string id = app.GetWindows().GetCurrentWindow().GetCurrentPageId();
-                return string.IsNullOrWhiteSpace(id) ? null : id;
+                IWindows windows = app.GetWindows();
+                try
+                {
+                    IWindow window = windows.GetCurrentWindow();
+                    try
+                    {
+                        string id = window.GetCurrentPageId();
+                        return string.IsNullOrWhiteSpace(id) ? null : id;
+                    }
+                    finally
+                    {
+                        _handle.Release(window);
+                    }
+                }
+                finally
+                {
+                    _handle.Release(windows);
+                }
             });
         }
         catch (Exception)

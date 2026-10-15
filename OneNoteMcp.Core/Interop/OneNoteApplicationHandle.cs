@@ -108,6 +108,8 @@ public sealed class OneNoteApplicationHandle : IDisposable
         });
     }
 
+    public void Release(object comObject) => _comObjects.Release(comObject);
+
     public void OperationCompleted()
     {
         StopIdleTimer();

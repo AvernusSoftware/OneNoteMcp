@@ -216,4 +216,24 @@ public class ComLifetimeTests
 
         Assert.That(_com.Released, Is.EqualTo(new object[] { _com.Created[0] }));
     }
+
+    [Test]
+    public async Task Reading_the_current_page_releases_the_window_objects_it_obtained()
+    {
+        await _service.GetCurrentPageAsync();
+
+        FakeWindows windows = _com.Created[0].Windows;
+        Assert.That(_com.Released, Is.EqualTo(new object[] { windows.CurrentWindow, windows }));
+    }
+
+    [Test]
+    public async Task The_window_objects_are_released_even_when_OneNote_has_no_active_window()
+    {
+        _com.OnCreate = application => application.Windows.CurrentWindow.CurrentPageIdFailure = new COMException("no active window");
+
+        await _service.GetCurrentPageAsync();
+
+        FakeWindows windows = _com.Created[0].Windows;
+        Assert.That(_com.Released, Is.EqualTo(new object[] { windows.CurrentWindow, windows }));
+    }
 }
