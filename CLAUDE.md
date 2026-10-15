@@ -102,6 +102,16 @@ Gap in the inherited safety model: `update_block` rebuilds a block from Markdown
 
 All COM calls run on one dedicated STA thread (`StaThreadRunner`) — never a pool, since the OneNote RCW is apartment-affine. Work completes via a `TaskCompletionSource` created with `RunContinuationsAsynchronously`; without that, awaits resume *on* the STA thread and starve the queue. The idle thread runs no message pump — safe because the server registers no COM event sinks, and COM pumps messages itself during outgoing calls.
 
+### The OneNote reference is held only while in use
+
+`ONENOTE.EXE` is an out-of-process COM server: while any client holds a reference, closing the window leaves a windowless process running, and the next launch of OneNote then fails with its "cleaning up" message. Confirmed by holding `OneNote.Application` from a script and closing the window: the process stayed until `FinalReleaseComObject`, then exited within a second.
+
+- `OneNoteApplicationHandle.OperationCompleted` runs at the end of every STA work item (`OneNoteComService.RunOnStaAsync`). It releases at once when `OneNote:IdleReleaseSeconds` is 0, otherwise it arms a `TimeProvider` timer. The timer callback runs on a pool thread and only queues the release onto the STA thread, and the release is skipped if another operation completed in the meantime, so all handle state stays STA-only.
+- The scope is the whole tool operation, not each `Invoke`: `create_page` and `attach_file` call `Invoke` several times, and releasing between them would start OneNote repeatedly in the middle of one operation when it is closed.
+- No lease counter: every call is serialised onto the one STA thread, so a counter could only ever be 0 or 1.
+- Every RCW counts, not just the application. `GetWindows()` and `GetCurrentWindow()` each return a separate RCW holding its own reference until the finalizer runs, so `get_current_page` releases both explicitly. Any new interop member returning an interface needs the same treatment.
+- Tests swap COM creation and release through `IComObjects`, run work inline through a fake `IStaThreadRunner`, and drive the timer with `FakeTimeProvider`, so no test waits in real time.
+
 ### Trimming and AOT are disabled
 
 `Directory.Build.props` sets `PublishTrimmed=false` and `PublishAot=false` — both strip or disable the COM interop this server depends on.

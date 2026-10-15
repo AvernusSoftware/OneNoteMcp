@@ -42,7 +42,10 @@ internal sealed class FakeApplication : IApplication
     {
     }
 
-    public void GetPageContent(string bstrPageId, out string pbstrPageXmlOut, PageInfo pageInfoToExport, XmlSchema xsSchema) => pbstrPageXmlOut = PageXml.Page(string.Empty);
+    public void GetPageContent(string bstrPageId, out string pbstrPageXmlOut, PageInfo pageInfoToExport, XmlSchema xsSchema)
+    {
+        pbstrPageXmlOut = PageXml.Page(string.Empty);
+    }
 
     public void UpdatePageContent(string bstrPageChangesXmlIn, DateTime dateExpectedLastModified, XmlSchema xsSchema, bool force)
     {
@@ -76,7 +79,10 @@ internal sealed class FakeApplication : IApplication
     {
     }
 
-    public void FindPages(string? bstrStartNodeId, string bstrSearchString, out string pbstrHierarchyXmlOut, bool fIncludeUnindexedPages, bool fDisplay, XmlSchema xsSchema) => pbstrHierarchyXmlOut = EmptyHierarchy;
+    public void FindPages(string? bstrStartNodeId, string bstrSearchString, out string pbstrHierarchyXmlOut, bool fIncludeUnindexedPages, bool fDisplay, XmlSchema xsSchema)
+    {
+        pbstrHierarchyXmlOut = EmptyHierarchy;
+    }
 
     public void FindMeta()
     {
