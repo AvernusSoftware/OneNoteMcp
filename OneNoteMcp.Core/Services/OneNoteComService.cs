@@ -124,7 +124,12 @@ public sealed class OneNoteComService : IOneNoteService, IDisposable
                 IWindows windows = app.GetWindows();
                 try
                 {
-                    IWindow window = windows.GetCurrentWindow();
+                    IWindow? window = windows.GetCurrentWindow();
+                    if (window is null)
+                    {
+                        return null;
+                    }
+
                     try
                     {
                         string id = window.GetCurrentPageId();

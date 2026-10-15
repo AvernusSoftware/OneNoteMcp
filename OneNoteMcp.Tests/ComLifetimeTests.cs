@@ -141,7 +141,7 @@ public class ComLifetimeTests
     {
         _com.OnCreate = application => application.GetHierarchyFailures.Enqueue(new InvalidOperationException("boom"));
 
-        Assert.ThrowsAsync<InvalidOperationException>(AnyOperation);
+        await Assert.ThatAsync(AnyOperation, Throws.InstanceOf<InvalidOperationException>());
         _time.Advance(IdleDelay);
 
         Assert.That(_com.Released, Is.EqualTo(new object[] { _com.Created[0] }));
@@ -235,5 +235,15 @@ public class ComLifetimeTests
 
         FakeWindows windows = _com.Created[0].Windows;
         Assert.That(_com.Released, Is.EqualTo(new object[] { windows.CurrentWindow, windows }));
+    }
+
+    [Test]
+    public async Task Only_the_windows_collection_is_released_when_OneNote_returns_no_current_window()
+    {
+        _com.OnCreate = application => application.Windows.HasActiveWindow = false;
+
+        await _service.GetCurrentPageAsync();
+
+        Assert.That(_com.Released, Is.EqualTo(new object[] { _com.Created[0].Windows }));
     }
 }

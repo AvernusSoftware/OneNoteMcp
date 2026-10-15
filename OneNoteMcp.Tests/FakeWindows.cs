@@ -6,6 +6,8 @@ internal sealed class FakeWindows : IWindows
 {
     public FakeWindow CurrentWindow { get; } = new();
 
+    public bool HasActiveWindow { get; set; } = true;
+
     public void ReservedItem()
     {
     }
@@ -18,5 +20,5 @@ internal sealed class FakeWindows : IWindows
     {
     }
 
-    public IWindow GetCurrentWindow() => CurrentWindow;
+    public IWindow GetCurrentWindow() => HasActiveWindow ? CurrentWindow : null!;
 }
